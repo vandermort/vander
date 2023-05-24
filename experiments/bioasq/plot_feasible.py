@@ -1,0 +1,112 @@
+import os
+import re
+import json
+import seaborn
+import argparse
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+
+from collections import defaultdict
+
+
+def load_attributes(filename, attributes):
+    with open(filename, 'r') as f:
+        results = json.load(f)
+    if attributes is not None:
+        results = {k: results[k] for k in attributes}
+    return results
+
+
+# def load_results(filenames, attributes):
+#     results = {}
+#     for filename in filenames:
+#         exp = os.path.basename(os.path.dirname(filename))
+#         exp = exp.replace('.tsv', '')
+#         exp = exp.replace('-bottleneck', '')
+#         results[exp] = load_attributes(filename, attributes)
+#         k, v, d = map(int, re.findall(r'-k-(?P<k>\d+)-v-(?P<v>\d+)-d-(?P<d>\d+)', exp)[0])
+#         num_params = v * d
+#         if 'vander' in exp:
+#             num_slack_params = v * (d - 2 * k - 1)
+#             num_vander_params = v + num_slack_params
+#             param_perc = (num_vander_params / num_params) * 100
+#         else:
+#             param_perc = 100.00
+#         results[exp]['param_perc'] = param_perc
+#
+#     # Make the dict be attr headed
+#     attr_results = defaultdict(dict)
+#     for fname, attrs in results.items():
+#         for attr, vals in attrs.items():
+#             attr_results[attr][fname] = vals
+#     return attr_results
+
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--results', type=str, nargs='+', required=True,
+                        help='Path to results json files.')
+    parser.add_argument('--savefig', type=str, default=None,
+                        help='Path to save plot.')
+
+    args = parser.parse_args()
+
+    experiments = []
+    for f in args.results:
+        attrs = load_attributes(f, None)
+        k, v, d = map(int, re.findall(r'-k-(?P<k>\d+)-v-(?P<v>\d+)-d-(?P<d>\d+)', attrs['model'])[0])
+        attrs['k'] = k
+        attrs['v'] = v
+        attrs['d'] = d
+        model = attrs['model']
+        experiments.append(attrs)
+
+    df = pd.DataFrame(experiments)
+    Vd = defaultdict(list)
+
+
+    xticks = set()
+    for i, row in df.sort_values(['v', 'd']).iterrows():
+        print(row.v, row.d, row.k)
+        label = (row.v, row.k)
+        Vd[label].append((row.d, row.argmax_p))
+        xticks.add(row.d)
+
+    xticks = list(sorted(xticks))
+
+    fig, ax = plt.subplots(figsize=(3.5, 7))
+    for k in Vd:
+        x, y = zip(*sorted(Vd[k], key=lambda x:x[0]))
+        # l = 'n=%d, k=%d' % (k)
+        l = 'n=%d' % (k[0])
+        if model.startswith('sigmoid'):
+            title='Sigmoid'
+            cc = cm.Oranges
+        elif model.startswith('vander-fft'):
+            title='Vander-DFT'
+            cc = cm.Purples
+        else:
+            title='Vander-DFT-L'
+            cc = cm.Blues
+        color = cc(np.sqrt(k[0])/np.sqrt(10000))
+        ax.plot(x, [e for e in y], '-o', label='%s' % l, c=color)
+    ax.set_title(title, fontsize=20)
+    # ax.set_xscale('log')
+    ax.set_xticks([], minor=True)
+    ax.set_xticks(xticks, xticks)
+    ax.tick_params(axis='both', labelsize=20)
+    ax.set_ylim([0, 105])
+    ax.set_xlabel('Feature Dim $d$', fontsize=20)
+    ax.set_ylabel('eps-Argmaxable Label Assignments (% of Test)', fontsize=20)
+    # ax.set_ylabel('eps-$\hat{A}_p$', fontsize=20)
+    plt.legend(fontsize=15, loc='lower right')
+    plt.tight_layout()
+    if args.savefig:
+        filepath = args.savefig
+        print('Saving plot as %s...' % filepath)
+        plt.savefig(filepath)
+    else:
+        plt.show()

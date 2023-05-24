@@ -1,0 +1,17 @@
+ipython
+matplotlib
+seaborn
+numpy==1.21.5
+scipy==1.7.3
+scikit-learn==1.0.2
+datasets==2.4.0
+pandas==1.3.5
+tqdm==4.62.3
+torch==1.13.1
+transformers==4.20.0
+gurobipy==9.5.1
+pathos==0.2.8
+mlconf
+pytest
+pytest-sugar
+pytest-xdist

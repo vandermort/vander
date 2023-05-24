@@ -1,0 +1,104 @@
+#!/env/bin/python
+import os
+import re
+import json
+import seaborn
+import argparse
+import numpy as np
+import pandas as pd
+
+from matplotlib.ticker import MaxNLocator
+from collections import defaultdict
+
+
+def load_attributes(filename, attributes):
+    with open(filename, 'r') as f:
+        results = json.load(f)
+    if attributes is not None:
+        results = {k: results[k] for k in attributes}
+    return results
+
+def rename_model(m):
+    k, v, d = map(int, re.findall(r'-k-(?P<k>\d+)-v-(?P<v>\d+)-d-(?P<d>\d+)', m)[0])
+    if 'sigmoid' in m:
+        # If we have a sigmoid layer, we keep the dimension at the beginning of filename
+        d = int(m.split('-')[1])
+        name = 'CSL ($d=%d$)' % d
+    elif 'vander-fft' in m:
+        name = 'Vander-DFT ($d=%d$)' % d
+    elif 'vander-' in m:
+        name = 'Vander-DFT-L ($d=%d$)' % d
+    else:
+        name = 'unknown'
+    return name
+
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--results', type=str, nargs='+', required=True,
+                        help='Path to results json files.')
+    parser.add_argument('--attributes', type=str, nargs='+', default=None,
+                        help='What attributes to plot.')
+    parser.add_argument('--sort-by', type=str, required=False,
+                        help='What attribute to sort by.')
+    parser.add_argument('--header', action='store_true',
+                        help='Whether to print the header.')
+    parser.add_argument('--footer', action='store_true',
+                        help='Whether to print the footer.')
+
+    args = parser.parse_args()
+
+    experiments = []
+    for f in args.results:
+        experiments.append(load_attributes(f, args.attributes))
+
+    df = pd.DataFrame(experiments)
+    if args.sort_by is not None:
+        df = df.sort_values(by=args.sort_by, ascending=False)
+    cols_map={
+              'ndcg@10': 'nDCG@10',
+              'ndcg@5': 'nDCG@5',
+              'prec@5': 'Prec@5',
+              'prec@10': 'Prec@10',
+              'ndcg': 'nDCG',
+              'macrof1': 'Mf1',
+              'exact acc': 'EM',
+              'argmax_p': 'eps-$\hat{A}_p$',
+              'e-argmax_p': '1-$\hat{A}_p$',
+              }
+    p, k, v, d = map(int, re.findall(r'-part-(?P<p>\d+)-k-(?P<k>\d+)-v-(?P<v>\d+)-d-(?P<d>\d+)', df.model[0])[0])
+    if p == 123:
+        p = 3
+    df.model = df.model.apply(rename_model)
+    # Sort according to longest name
+    df['model_len'] = df.model.str.len()
+    df = df.sort_values(by='model_len')
+    df = df.drop(columns='model_len')
+    # Rename columns
+    df = df.rename(columns=cols_map)
+    df.insert(0, ' ', ' ')
+    df.insert(6, '$A_p$', 100.00)
+    df.loc[df.model.str.startswith('CSL'), '$A_p$'] = 0.
+
+    # Fix prec@5 and EM not being percentages
+    if 'EM' in df:
+        df['EM'] *= 100
+    if 'Prec@5' in df:
+        df['Prec@5'] *= 100
+    if 'Prec@10' in df:
+        df['Prec@10'] *= 100
+
+    table = df.to_latex(float_format="%.4f", index=False, escape=False)
+    if not args.header:
+        table = table.replace(r'\midrule', r'\cmidrule(lr){2-9}')
+    table = table.replace('rrrrrrr', 'ccccccc')
+    rows = table.split('\n')
+    row = r'\parbox[t]{2mm}{\multirow{9}{*}{\rotatebox[origin=c]{90}{$k=%d$, $n=%d$, $T=\times %d$}}}' % (k, v, p)
+    if args.header:
+        print('\n'.join(rows[:4] + [row] + rows[4:-3]))
+    else:
+        if args.footer:
+            print('\n'.join(rows[3:-1]))
+        else:
+            print('\n'.join(rows[3:-3]))

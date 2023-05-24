@@ -1,0 +1,52 @@
+#!/env/bin/python
+from argparse import ArgumentParser
+
+ENC_DIM = 768
+
+
+def calc_params_sigmoid(V, D):
+    return ENC_DIM * D + D * V
+
+
+def calc_params_vander(V, VD, S):
+    return ENC_DIM * (VD + S) + S * V + V
+
+
+if __name__ == "__main__":
+
+    parser = ArgumentParser()
+    parser.add_argument('--V', type=int, help='Vocabulary size')
+    parser.add_argument('--S', type=int, help='Number of slack dimensions')
+    parser.add_argument('--K', type=int, help='Cardinality')
+    parser.add_argument('--verbose', action='store_true')
+    args = parser.parse_args()
+
+    # K = 10
+    # # V = 1000
+    # # V = 5000
+    # V = 10000
+
+    # for V in [1000, 5000, 10000]:
+        # In Vander we have one m
+
+    VD = 2 * args.K + 1
+    D = args.S + VD
+    # We have this many less parameters in a Vander Layer
+    # divide by number of params we get by increasing sigmoid
+    # dimensionality by 1
+    Ddiff = ((VD - 1) * args.V) // (args.V + ENC_DIM)
+    new_d = D - Ddiff
+    new_d = new_d
+    if args.verbose:
+        print('For K=%d, V=%d' % (args.K, args.V))
+    sig_params = calc_params_sigmoid(args.V, D)
+    van_params = calc_params_vander(args.V, VD, args.S)
+    if args.verbose:
+        print('Sigmoid params: %d' % sig_params)
+        print('Vander params:  %d' % van_params)
+        print('## By shrinking D=%d -> to D=%d for sigmoid, we get' % (D, new_d))
+    sig_upd_params = calc_params_sigmoid(args.V, new_d)
+    assert sig_upd_params > van_params > calc_params_sigmoid(args.V, new_d - 1)
+    if args.verbose:
+        print('Sigmoid params: %d' % sig_upd_params)
+    print(new_d)
